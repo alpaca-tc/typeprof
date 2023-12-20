@@ -807,6 +807,7 @@ module TypeProf
         Type::Array.new(Type::Array::Elements.new(lead_tys, rest_ty), base_type)
       when :hash
         _, path, (k, v) = ty
+        pp [path, k, v]
         Type.gen_hash(Type::Instance.new(path_to_klass(path))) do |h|
           k_ty = conv_type(k)
           v_ty = conv_type(v)

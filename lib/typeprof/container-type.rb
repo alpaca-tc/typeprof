@@ -614,7 +614,7 @@ module TypeProf
           map_tys.each do |k_ty, v_ty|
             raise unless k_ty.is_a?(Type)
             raise unless v_ty.is_a?(Type)
-            #raise if k_ty.is_a?(Type::Union)
+            raise if k_ty.is_a?(Type::Union)
             raise if k_ty.is_a?(Type::Local)
             raise if k_ty.is_a?(Type::Array)
             raise if k_ty.is_a?(Type::Hash)
