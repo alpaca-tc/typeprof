@@ -2,6 +2,14 @@
 
 require_relative "../lib/typeprof"
 
+%w[
+  pry-remote
+  pry
+  coderay
+  method_source
+].each { |gem| $LOAD_PATH.unshift.unshift(Gem::Specification.find_by_name(gem).full_gem_path) }
+require 'pry-remote'
+
 case ARGV[0]
 when "--version"
   puts "typeprof 0.30.0"
