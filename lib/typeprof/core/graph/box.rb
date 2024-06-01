@@ -328,6 +328,7 @@ module TypeProf::Core
       param_map0 = Type.default_param_map(genv, ty)
 
       positional_args = []
+      keyword_args = []
       splat_flags = []
 
       method_type.req_positionals.each do |a_arg|
@@ -545,6 +546,7 @@ module TypeProf::Core
       @mid = mid
       @a_args = a_args.new_vertexes(genv, mid, node)
       @a_args.positionals.each {|arg| arg.add_edge(genv, self) }
+      @a_args.keywords.add_edge(genv, self) if @a_args.keywords
       @a_args.block.add_edge(genv, self) if @a_args.block
       @ret = Vertex.new("ret:#{ mid }", node)
       @subclasses = subclasses
