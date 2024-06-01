@@ -348,6 +348,8 @@ module TypeProf::Core
         positional_args << a_arg.contravariant_vertex(genv, changes, param_map0)
         splat_flags << false
       end
+      binding.pry_remote unless method_type.req_keywords.empty?
+      binding.pry_remote unless method_type.opt_keywords.empty?
 
       a_args = ActualArguments.new(positional_args, splat_flags, nil, nil) # TODO: keywords and block
       if pass_positionals(changes, genv, a_args)
