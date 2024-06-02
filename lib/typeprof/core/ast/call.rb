@@ -70,6 +70,7 @@ module TypeProf::Core
           arg.install(genv)
         end
 
+        # TODO: 各キーに分割するのか、何か必要っぽい
         keyword_args = @keyword_args ? @keyword_args.install(genv) : nil
 
         if @block_body

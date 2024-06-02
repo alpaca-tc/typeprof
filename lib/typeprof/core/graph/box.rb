@@ -348,11 +348,11 @@ module TypeProf::Core
         positional_args << a_arg.contravariant_vertex(genv, changes, param_map0)
         splat_flags << false
       end
-      binding.pry_remote unless method_type.req_keywords.empty?
-      binding.pry_remote unless method_type.opt_keywords.empty?
+      # binding.pry_remote unless method_type.req_keywords.empty?
+      # binding.pry_remote unless method_type.opt_keywords.empty?
 
       a_args = ActualArguments.new(positional_args, splat_flags, nil, nil) # TODO: keywords and block
-      if pass_positionals(changes, genv, a_args)
+      if pass_arguments(changes, genv, a_args)
         # TODO: block
         f_ret = method_type.return_type.contravariant_vertex(genv, changes, param_map0)
         @ret_boxes.each do |ret_box|
@@ -361,7 +361,156 @@ module TypeProf::Core
       end
     end
 
-    def pass_positionals(changes, genv, a_args)
+    def call(changes, genv, a_args, ret)
+      if pass_arguments(changes, genv, a_args)
+        changes.add_edge(genv, a_args.block, @f_args.block) if @f_args.block && a_args.block
+
+        changes.add_edge(genv, @ret, ret)
+      end
+    end
+
+    def show
+      block_show = []
+      if @record_block.used
+        blk_f_args = @record_block.f_args.map {|arg| arg.show }.join(", ")
+        blk_ret = @record_block.ret.show
+        block_show << "{ (#{ blk_f_args }) -> #{ blk_ret } }"
+      end
+      args = []
+      @f_args.req_positionals.each do |f_vtx|
+        args << Type.strip_parens(f_vtx.show)
+      end
+      @f_args.opt_positionals.each do |f_vtx|
+        args << ("?" + Type.strip_parens(f_vtx.show))
+      end
+      if @f_args.rest_positionals
+        args << ("*" + Type.strip_parens(@f_args.rest_positionals.show))
+      end
+      @f_args.post_positionals.each do |var|
+        args << Type.strip_parens(var.show)
+      end
+      if @node.is_a?(AST::DefNode)
+        @node.req_keywords.zip(@f_args.req_keywords) do |name, f_vtx|
+          args << "#{ name }: #{Type.strip_parens(f_vtx.show)}"
+        end
+        @node.opt_keywords.zip(@f_args.opt_keywords) do |name, f_vtx|
+          args << "?#{ name }: #{Type.strip_parens(f_vtx.show)}"
+        end
+      end
+      if @f_args.rest_keywords
+        args << "**#{ Type.strip_parens(@f_args.rest_keywords.show) }"
+      end
+      args = args.join(", ")
+      s = args.empty? ? [] : ["(#{ args })"]
+      s << "#{ block_show.sort.join(" | ") }" unless block_show.empty?
+      s << "-> #{ @ret.show }"
+      s.join(" ")
+    end
+
+    private
+
+    def pass_arguments(changes, genv, a_args)
+      if a_args.splat_flags.any?
+        # there is at least one splat actual argument
+
+        lower = @f_args.req_positionals.size + @f_args.post_positionals.size
+        upper = @f_args.rest_positionals ? nil : lower + @f_args.opt_positionals.size
+        if upper && upper < a_args.positionals.size
+          meth = changes.node.mid_code_range ? :mid_code_range : :code_range
+          err = "#{ a_args.positionals.size } for #{ lower }#{ upper ? lower < upper ? "...#{ upper }" : "" : "+" }"
+          changes.add_diagnostic(meth, "wrong number of arguments (#{ err })")
+          return false
+        end
+
+        start_rest = [a_args.splat_flags.index(true), @f_args.req_positionals.size + @f_args.opt_positionals.size].min
+        end_rest = [a_args.splat_flags.rindex(true) + 1, a_args.positionals.size - @f_args.post_positionals.size].max
+        rest_vtxs = a_args.get_rest_args(genv, start_rest, end_rest)
+
+        @f_args.req_positionals.each_with_index do |f_vtx, i|
+          if i < start_rest
+            changes.add_edge(genv, a_args.positionals[i], f_vtx)
+          else
+            rest_vtxs.each do |vtx|
+              changes.add_edge(genv, vtx, f_vtx)
+            end
+          end
+        end
+        @f_args.opt_positionals.each_with_index do |f_vtx, i|
+          i += @f_args.opt_positionals.size
+          if i < start_rest
+            changes.add_edge(genv, a_args.positionals[i], f_vtx)
+          else
+            rest_vtxs.each do |vtx|
+              changes.add_edge(genv, vtx, f_vtx)
+            end
+          end
+        end
+        @f_args.post_positionals.each_with_index do |f_vtx, i|
+          i += a_args.positionals.size - @f_args.post_positionals.size
+          if end_rest <= i
+            changes.add_edge(genv, a_args.positionals[i], f_vtx)
+          else
+            rest_vtxs.each do |vtx|
+              changes.add_edge(genv, vtx, f_vtx)
+            end
+          end
+        end
+
+        if @f_args.rest_positionals
+          rest_vtxs.each do |vtx|
+            changes.add_edge(genv, vtx, @f_args.rest_positionals)
+          end
+        end
+
+        # TODO: keywords
+      else
+        # there is no splat actual argument
+
+        lower = @f_args.req_positionals.size + @f_args.post_positionals.size
+        upper = @f_args.rest_positionals ? nil : lower + @f_args.opt_positionals.size
+        if a_args.positionals.size < lower || (upper && upper < a_args.positionals.size)
+          meth = changes.node.mid_code_range ? :mid_code_range : :code_range
+          err = "#{ a_args.positionals.size } for #{ lower }#{ upper ? lower < upper ? "...#{ upper }" : "" : "+" }"
+          changes.add_diagnostic(meth, "wrong number of arguments (#{ err })")
+          return false
+        end
+
+        @f_args.req_positionals.each_with_index do |f_vtx, i|
+          changes.add_edge(genv, a_args.positionals[i], f_vtx)
+        end
+        @f_args.post_positionals.each_with_index do |f_vtx, i|
+          i -= @f_args.post_positionals.size
+          changes.add_edge(genv, a_args.positionals[i], f_vtx)
+        end
+        start_rest = @f_args.req_positionals.size
+        end_rest = a_args.positionals.size - @f_args.post_positionals.size
+        i = 0
+        while i < @f_args.opt_positionals.size && start_rest < end_rest
+          f_arg = @f_args.opt_positionals[i]
+          changes.add_edge(genv, a_args.positionals[start_rest], f_arg)
+          i += 1
+          start_rest += 1
+        end
+
+        if start_rest < end_rest
+          if @f_args.rest_positionals
+            f_arg = @f_args.rest_positionals
+            (start_rest..end_rest-1).each do |i|
+              changes.add_edge(genv, a_args.positionals[i], f_arg)
+            end
+          end
+        end
+
+        # binding.pry_remote
+        @f_args.req_keywords.each do |f_vtx|
+          changes.add_edge(genv, a_args.keywords, f_vtx) if @f_args.req_keywords.any?
+        end
+        # TODO: opts keywords
+      end
+      return true
+    end
+
+    def pass_keywords(changes, genv, a_args)
       if a_args.splat_flags.any?
         # there is at least one splat actual argument
 
@@ -454,51 +603,7 @@ module TypeProf::Core
       return true
     end
 
-    def call(changes, genv, a_args, ret)
-      if pass_positionals(changes, genv, a_args)
-        changes.add_edge(genv, a_args.block, @f_args.block) if @f_args.block && a_args.block
 
-        changes.add_edge(genv, @ret, ret)
-      end
-    end
-
-    def show
-      block_show = []
-      if @record_block.used
-        blk_f_args = @record_block.f_args.map {|arg| arg.show }.join(", ")
-        blk_ret = @record_block.ret.show
-        block_show << "{ (#{ blk_f_args }) -> #{ blk_ret } }"
-      end
-      args = []
-      @f_args.req_positionals.each do |f_vtx|
-        args << Type.strip_parens(f_vtx.show)
-      end
-      @f_args.opt_positionals.each do |f_vtx|
-        args << ("?" + Type.strip_parens(f_vtx.show))
-      end
-      if @f_args.rest_positionals
-        args << ("*" + Type.strip_parens(@f_args.rest_positionals.show))
-      end
-      @f_args.post_positionals.each do |var|
-        args << Type.strip_parens(var.show)
-      end
-      if @node.is_a?(AST::DefNode)
-        @node.req_keywords.zip(@f_args.req_keywords) do |name, f_vtx|
-          args << "#{ name }: #{Type.strip_parens(f_vtx.show)}"
-        end
-        @node.opt_keywords.zip(@f_args.opt_keywords) do |name, f_vtx|
-          args << "?#{ name }: #{Type.strip_parens(f_vtx.show)}"
-        end
-      end
-      if @f_args.rest_keywords
-        args << "**#{ Type.strip_parens(@f_args.rest_keywords.show) }"
-      end
-      args = args.join(", ")
-      s = args.empty? ? [] : ["(#{ args })"]
-      s << "#{ block_show.sort.join(" | ") }" unless block_show.empty?
-      s << "-> #{ @ret.show }"
-      s.join(" ")
-    end
   end
 
   class MethodAliasBox < Box
