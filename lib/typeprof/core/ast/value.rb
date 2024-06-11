@@ -254,6 +254,7 @@ module TypeProf::Core
         super(raw_node, lenv)
         @keys = []
         @vals = []
+        @splats = []
         @keywords = keywords
 
         raw_node.elements.each do |raw_elem|
@@ -262,15 +263,17 @@ module TypeProf::Core
           when :assoc_node
             @keys << AST.create_node(raw_elem.key, lenv)
             @vals << AST.create_node(raw_elem.value, lenv)
+          when :assoc_splat_node
+            @splats << AST.create_node(raw_elem.value, lenv)
           else
             raise "unknown hash elem"
           end
         end
       end
 
-      attr_reader :keys, :vals, :keywords
+      attr_reader :keys, :vals, :splats, :keywords
 
-      def subnodes = { keys:, vals: }
+      def subnodes = { keys:, vals:, splats: }
       def attrs = { keywords: }
 
       def install0(genv)
@@ -289,7 +292,21 @@ module TypeProf::Core
             # TODO: if h is a hash, we need to connect its elements to the new hash
           end
         end
-        Source.new(Type::Hash.new(genv, literal_pairs, genv.gen_hash_type(unified_key, unified_val)))
+
+        source = Source.new(Type::Hash.new(genv, literal_pairs, genv.gen_hash_type(unified_key, unified_val)))
+
+        @splats.each do |splat|
+          # FIXME: dirty implementation...
+          val = splat.install(genv).new_vertex(genv, "hash-splat", self)
+
+          a_args = ActualArguments.new([], [], nil, nil)
+          to_h = @changes.add_method_call_box(genv, val, :to_hash, a_args, false)
+
+          a_args = ActualArguments.new([to_h.ret], [false], nil, nil)
+          source = @changes.add_method_call_box(genv, source, :merge, a_args, false).ret
+        end
+
+        source
       end
     end
 
