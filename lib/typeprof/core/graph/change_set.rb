@@ -123,6 +123,12 @@ module TypeProf::Core
       @new_boxes[key] = TypeReadBox.new(@node, genv, type)
     end
 
+    def add_converted_type_box(genv, recv, type)
+      key = [:converted_type, recv, type]
+      return if @new_boxes[key]
+      @new_boxes[key] = ConvertedTypeBox.new(@node, genv, recv, type)
+    end
+
     def add_diagnostic(meth, msg)
       @new_diagnostics << TypeProf::Diagnostic.new(@node, meth, msg)
     end

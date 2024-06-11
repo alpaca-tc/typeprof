@@ -296,13 +296,11 @@ module TypeProf::Core
         source = Source.new(Type::Hash.new(genv, literal_pairs, genv.gen_hash_type(unified_key, unified_val)))
 
         @splats.each do |splat|
-          # FIXME: dirty implementation...
           val = splat.install(genv).new_vertex(genv, "hash-splat", self)
+          hash = changes.add_converted_type_box(genv, val, genv.mod_hash)
 
-          a_args = ActualArguments.new([], [], nil, nil)
-          to_h = @changes.add_method_call_box(genv, val, :to_hash, a_args, false)
-
-          a_args = ActualArguments.new([to_h.ret], [false], nil, nil)
+          # FIXME: How to merge the hash?
+          a_args = ActualArguments.new([hash.ret], [false], nil, nil)
           source = @changes.add_method_call_box(genv, source, :merge, a_args, false).ret
         end
 

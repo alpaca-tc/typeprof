@@ -8,6 +8,8 @@ module TypeProf::Core
     attr_reader :types
 
     def each_type(&blk)
+      return enum_for(__method__) unless block_given?
+
       @types.each_key(&blk)
 
       until @types_to_be_added.empty?

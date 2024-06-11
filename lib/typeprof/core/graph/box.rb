@@ -464,15 +464,25 @@ module TypeProf::Core
       end
 
       if a_args.keywords
+        hash_types = a_args.keywords.each_type.map do |ty|
+          if ty.is_a?(TypeProf::Core::Type::Hash)
+            ty
+          elsif ty.is_a?(TypeProf::Core::Type::Instance) && ty.mod == genv.mod_hash
+            Type::Hash.new(genv, {}, ty)
+          else
+            raise "unsupported type #{ ty }"
+          end
+        end
+
         # TODO: support diagnostics
         @node.req_keywords.zip(@f_args.req_keywords) do |name, f_vtx|
-          a_args.keywords.each_type do |ty|
+          hash_types.each do |ty|
             changes.add_edge(genv, ty.get_value(name), f_vtx)
           end
         end
 
         @node.opt_keywords.zip(@f_args.opt_keywords).each do |name, f_vtx|
-          a_args.keywords.each_type do |ty|
+          hash_types.each do |ty|
             changes.add_edge(genv, ty.get_value(name), f_vtx)
           end
         end
@@ -593,6 +603,8 @@ module TypeProf::Core
       called_mdefs = Set[]
       error_count = 0
       resolve(genv, changes) do |me, ty, mid, orig_ty|
+        # binding.pry_remote if @mid == :to_hash
+
         if !me
           # TODO: undefined method error
           if error_count < 3
@@ -894,6 +906,35 @@ module TypeProf::Core
       edges.each do |src, dst|
         changes.add_edge(genv, src, dst)
       end
+    end
+  end
+
+  class ConvertedTypeBox < Box
+    def initialize(node, genv, recv, type)
+      super(node)
+      @recv = recv
+      @type = type
+      @ret = Vertex.new("converted-type", node)
+      genv.add_run(self)
+    end
+
+    attr_reader :node, :recv, :type, :ret
+
+    def run0(genv, changes)
+      # ty = @recv.types.each_type { break _1 }
+      @recv.each_type do |ty|
+        next unless ty.base_type(genv).mod == @type
+
+        changes.add_edge(genv, @recv, @ret)
+        return
+      end
+
+      # TODO: implement
+      raise 'not reached'
+      # # Perform the conversion if @recv is not an instance of @type.
+      # blank_a_args = ActualArguments.new([], [], nil, nil)
+      # converted = @changes.add_method_call_box(genv, @recv, @mid, blank_a_args, false)
+      # changes.add_edge(genv, converted.ret, @ret)
     end
   end
 end
