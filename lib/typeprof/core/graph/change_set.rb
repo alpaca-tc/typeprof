@@ -123,6 +123,18 @@ module TypeProf::Core
       @new_boxes[key] = TypeReadBox.new(@node, genv, type)
     end
 
+    def add_type_convert_box(genv, recv, type, mid)
+      key = [:type_convert, recv, type, mid]
+      return if @new_boxes[key]
+      @new_boxes[key] = TypeConvertBox.new(@node, genv, recv, type, mid)
+    end
+
+    def add_hash_splat_box(genv, src, dst)
+      key = [:hash_splat, src, dst]
+      return if @new_boxes[key]
+      @new_boxes[key] = HashSplatBox.new(@node, genv, src, dst)
+    end
+
     def add_diagnostic(meth, msg)
       @new_diagnostics << TypeProf::Diagnostic.new(@node, meth, msg)
     end

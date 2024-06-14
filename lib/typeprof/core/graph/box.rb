@@ -896,4 +896,74 @@ module TypeProf::Core
       end
     end
   end
+
+  class TypeConvertBox < Box
+    def initialize(node, genv, recv, type, mid)
+      super(node)
+      @recv = recv
+      @type = type
+      @mid = mid
+      @ret = Vertex.new("converted-type", node)
+      genv.add_run(self)
+    end
+
+    attr_reader :node, :recv, :type, :ret
+
+    def run0(genv, changes)
+      # should_convert = true
+      @recv.each_type do |ty|
+        next unless ty.base_type(genv).mod == @type
+
+        # should_convert = false
+        changes.add_edge(genv, @recv, @ret)
+      end
+
+      # return unless should_convert
+      #
+      # TODO: Convert the type of @recv to @type.
+      # TODO: handle the conversion error
+      # Perform the conversion if @recv is not an instance of @type.
+      # blank_a_args = ActualArguments.new([], [], nil, nil)
+      # converted = @changes.add_method_call_box(genv, @recv, @mid, blank_a_args, false)
+      # changes.add_edge(genv, converted.ret, @ret)
+    end
+  end
+
+  class HashSplatBox < Box
+    def initialize(node, genv, src, dst)
+      super(node)
+      @src = src
+      @dst = dst
+      @ret = Vertex.new("splat-hash-box", node)
+      genv.add_run(self)
+    end
+
+    attr_reader :node, :src, :dst, :ret
+
+    def run0(genv, changes)
+      unified_key = Vertex.new("splat-hash-box-key", node)
+      unified_val = Vertex.new("splat-hash-box-val", node)
+      literal_pairs = {}
+
+      (src.each_type.to_a + dst.each_type.to_a).each do |ty|
+        if ty.is_a?(Type::Hash)
+          ty.literal_pairs.each do |key, val|
+            literal_pairs[key] ||= Vertex.new("splat-hash-box-val-#{key}", node)
+            changes.add_edge(genv, val, literal_pairs[key])
+          end
+        end
+
+        if ty.is_a?(Type::Hash) || ty.is_a?(Type::Instance) && ty.base_type(genv).mod == genv.mod_hash
+          base_type = ty.base_type(genv)
+          changes.add_edge(genv, base_type.args[0], unified_key)
+          changes.add_edge(genv, base_type.args[1], unified_val)
+        else
+          # TODO: handle unresolved types
+        end
+      end
+
+      source = Source.new(Type::Hash.new(genv, literal_pairs, Type::Instance.new(genv, genv.mod_hash, [unified_key, unified_val])))
+      changes.add_edge(genv, source, @ret)
+    end
+  end
 end
