@@ -233,6 +233,8 @@ module TypeProf::Core
               const_read = mdef.superclass_cpath.static_ret
               return const_read ? const_read.cpath : []
             end
+          when AST::SingletonClassNode
+            return []
           when AST::ModuleNode
             return nil
           else
